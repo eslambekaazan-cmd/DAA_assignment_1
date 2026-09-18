@@ -3,58 +3,80 @@ package kz.nu.daa;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Arrays;
 import java.util.Random;
 
 public class Main {
 
     public static void main(String[] args) {
-        int[] sizes = {100, 1000, 5000, 10000, 50000, 100000};
+        int[] sizes = {1000, 10000, 100000, 1000000};
+        String[] inputTypes = {"random", "sorted", "duplicates"};
 
-        try (PrintWriter writer = new PrintWriter(new FileWriter("benchmark_results.csv"))) {
-            writer.println("Algorithm,InputType,Size,Comparisons,MaxDepth,TimeMs");
+        try (PrintWriter writer = new PrintWriter(new FileWriter("results.csv"))) {
+            writer.println("algorithm,input,n,time_ms,comparisons,max_depth");
 
             for (int size : sizes) {
-                runBenchmarksForSize(size, writer);
+                for (String inputType : inputTypes) {
+                    runBenchmarkSuite(writer, "MergeSort", inputType, size);
+                    runBenchmarkSuite(writer, "QuickSort", inputType, size);
+                    runBenchmarkSuite(writer, "QuickSelect", inputType, size);
+                }
             }
-            System.out.println("Benchmarks completed! Results saved to benchmark_results.csv");
+            System.out.println("Benchmarks completed! Results saved to results.csv");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private static void runBenchmarksForSize(int size, PrintWriter writer) {
-        Random rnd = new Random(42);
+    private static void runBenchmarkSuite(PrintWriter writer, String algo, String inputType, int size) {
+        long[] times = new long[5];
+        long[] comparisons = new long[5];
+        long[] depths = new long[5];
 
-        int[] randomArr = rnd.ints(size, -100000, 100000).toArray();
-        int[] sortedArr = randomArr.clone();
-        java.util.Arrays.sort(sortedArr);
-        int[] reversedArr = new int[size];
-        for (int i = 0; i < size; i++) {
-            reversedArr[i] = sortedArr[size - 1 - i];
+        for (int run = 0; run < 5; run++) {
+            int[] data = generateInput(inputType, size, run);
+            Metrics metrics = new Metrics();
+
+            long startTime = System.nanoTime();
+            if ("MergeSort".equals(algo)) {
+                MergeSort.sort(data, metrics);
+            } else if ("QuickSort".equals(algo)) {
+                QuickSort.sort(data, metrics);
+            } else if ("QuickSelect".equals(algo)) {
+                QuickSelect.select(data, size / 2, metrics);
+            }
+            long endTime = System.nanoTime();
+
+            times[run] = (endTime - startTime) / 1_000_000;
+            comparisons[run] = metrics.getComparisons();
+            depths[run] = metrics.getMaxDepth();
         }
 
-        testAndRecord("MergeSort", "Random", randomArr, writer);
-        testAndRecord("MergeSort", "Sorted", sortedArr, writer);
-        testAndRecord("MergeSort", "Reversed", reversedArr, writer);
 
-        testAndRecord("QuickSort", "Random", randomArr, writer);
-        testAndRecord("QuickSort", "Sorted", sortedArr, writer);
-        testAndRecord("QuickSort", "Reversed", reversedArr, writer);
+        Arrays.sort(times);
+        Arrays.sort(comparisons);
+        Arrays.sort(depths);
+
+
+        long medianTime = times[2];
+        long medianComp = comparisons[2];
+        long medianDepth = depths[2];
+
+        writer.printf("%s,%s,%d,%d,%d,%d\n", algo, inputType, size, medianTime, medianComp, medianDepth);
     }
 
-    private static void testAndRecord(String algo, String inputType, int[] original, PrintWriter writer) {
-        int[] data = original.clone();
-        Metrics metrics = new Metrics();
+    private static int[] generateInput(String type, int size, int seed) {
+        Random rnd = new Random(42 + seed);
+        int[] arr = new int[size];
 
-        long startTime = System.currentTimeMillis();
-        if ("MergeSort".equals(algo)) {
-            MergeSort.sort(data, metrics);
-        } else if ("QuickSort".equals(algo)) {
-            QuickSort.sort(data, metrics);
+        if ("random".equals(type)) {
+            for (int i = 0; i < size; i++) arr[i] = rnd.nextInt();
+        } else if ("sorted".equals(type)) {
+            for (int i = 0; i < size; i++) arr[i] = i;
+        } else if ("duplicates".equals(type)) {
+            for (int i = 0; i < size; i++) arr[i] = rnd.nextInt(10); // значения строго от 0 до 9
         }
-        long timeMs = System.currentTimeMillis() - startTime;
 
-        writer.printf("%s,%s,%d,%d,%d,%d\n",
-                algo, inputType, data.length, metrics.getComparisons(), metrics.getMaxDepth(), timeMs);
+        return arr;
     }
 }
